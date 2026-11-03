@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "AnimeOn Hunter & Cards — Тыквы & Карточки 🎃🎴",
+  "version": "1.3.0",
+  "description": "Непрерывный автосборщик тыкв и быстрое автооткрытие карточек на AnimeOn.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icons/icon48.png",
+    "default_title": "AnimeOn Hunter & Cards"
+  },
+  "permissions": [
+    "storage",
+    "alarms"
+  ],
+  "host_permissions": [
+    "*://animeon.cc/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://animeon.cc/*"
+      ],
+      "js": [
+        "seed_urls.js",
+        "cards_opener.js",
+        "content.js"
+      ],
+      "css": [
+        "hud.css",
+        "cards.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

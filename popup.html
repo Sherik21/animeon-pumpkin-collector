@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AnimeOn Pumpkin Hunter</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Шапка -->
+    <header class="header">
+      <div class="logo-wrap">
+        <span class="logo-icon">🎃</span>
+        <div>
+          <h1 class="title">AnimeOn Pumpkin Hunter</h1>
+          <span class="subtitle">Непрерывный автосборщик</span>
+        </div>
+      </div>
+      <div id="status-pill" class="status-pill ready">Активен</div>
+    </header>
+
+    <!-- Основные показатели -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <span class="stat-icon">🎃</span>
+        <div class="stat-info">
+          <span id="stat-balance" class="stat-number">0</span>
+          <span class="stat-label">Баланс тыкв</span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <span class="stat-icon">📅</span>
+        <div class="stat-info">
+          <span id="stat-today" class="stat-number">0 / 60</span>
+          <span class="stat-label">Сегодня (лимит 60)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Таймер до смены часа -->
+    <div class="timer-box">
+      <span class="timer-title">Смена часа (сброс локаций):</span>
+      <span id="timer-val" class="timer-time">--:--</span>
+    </div>
+
+    <!-- Раздел: Где были найдены тыквы в этом часе -->
+    <div class="locations-box">
+      <div class="locations-header">
+        <span class="locations-title">📍 Где были тыквы в этом часе (<span id="locations-count">0</span>):</span>
+      </div>
+      <div id="locations-list" class="locations-list">
+        <div class="locations-empty">В этом часе тыквы пока не найдены</div>
+      </div>
+    </div>
+
+    <!-- Действия -->
+    <div class="action-buttons">
+      <button id="btn-quick-scan" class="btn btn-primary">
+        <span>⚡</span> Собрать тыквы сейчас (100 стр)
+      </button>
+      <button id="btn-deep-scan" class="btn btn-secondary">
+        <span>🌐</span> Глубокий сбор (Карта сайта)
+      </button>
+      <button id="btn-open-cards" class="btn btn-cards">
+        <span>🎴</span> Автооткрытие карточек
+      </button>
+      <button id="btn-open-shop" class="btn btn-shop">
+        <span>🛒</span> Магазин ивента
+      </button>
+    </div>
+
+    <!-- Настройки -->
+    <div class="settings-section">
+      <h2 class="section-title">Автоматизация</h2>
+
+      <div class="toggle-item" id="toggle-always">
+        <div class="toggle-text">
+          <span class="toggle-name">🔥 Всегда собирать тыквы</span>
+          <span class="toggle-desc">Постоянный сбор каждый час и каждые 5 мин</span>
+        </div>
+        <div class="switch" id="sw-always">
+          <div class="switch-thumb"></div>
+        </div>
+      </div>
+
+      <div class="toggle-item" id="toggle-autoclick">
+        <div class="toggle-text">
+          <span class="toggle-name">Автоклик при просмотре</span>
+          <span class="toggle-desc">Мгновенно забирать тыкву на открытой странице</span>
+        </div>
+        <div class="switch" id="sw-autoclick">
+          <div class="switch-thumb"></div>
+        </div>
+      </div>
+
+      <div class="toggle-item" id="toggle-sound">
+        <div class="toggle-text">
+          <span class="toggle-name">Звуковое оповещение</span>
+          <span class="toggle-desc">Колокольчик при получении тыквы</span>
+        </div>
+        <div class="switch" id="sw-sound">
+          <div class="switch-thumb"></div>
+        </div>
+      </div>
+
+      <div class="toggle-item" id="toggle-hud">
+        <div class="toggle-text">
+          <span class="toggle-name">Виджет на сайте</span>
+          <span class="toggle-desc">Плавающая тыквенная кнопка в углу</span>
+        </div>
+        <div class="switch" id="sw-hud">
+          <div class="switch-thumb"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Подвал -->
+    <footer class="footer">
+      <button id="btn-clear-stats" class="btn-text">Сбросить счетчики</button>
+      <span>AnimeOn Hunter & Cards v1.3</span>
+    </footer>
+  </div>
+
+  <script src="seed_urls.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
