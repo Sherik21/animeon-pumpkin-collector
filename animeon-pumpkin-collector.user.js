@@ -198,7 +198,9 @@
   `;
 
   const styleEl = document.createElement('style');
-  styleEl.textContent = CSS + `\n/* cards.css — Стили для быстрого автооткрытия карточек на AnimeOn */
+  styleEl.textContent = CSS + `
+/* cards.css — Стили для быстрого автооткрытия карточек на AnimeOn */
+/* cards.css — Стили для быстрого автооткрытия карточек на AnimeOn */
 
 #aon-cards-widget {
   position: fixed;
@@ -726,35 +728,120 @@
   border-radius: 3px;
 }
 
-/* Кнопка быстрого вызова на сайте */
+/* Кнопка быстрого вызова на сайте (перетаскиваемая, скрываемая, сворачиваемая) */
 #aon-cards-trigger-btn {
   position: fixed;
-  bottom: 24px;
-  right: 24px;
+  bottom: 80px;
+  right: 16px;
   background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
   color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 999px;
-  padding: 10px 18px;
+  padding: 8px 14px;
   font-size: 13px;
   font-weight: 800;
-  cursor: pointer;
+  cursor: grab;
   box-shadow: 0 8px 24px rgba(168, 85, 247, 0.5);
   z-index: 9999998;
   display: flex;
   align-items: center;
   gap: 8px;
-  transition: all 0.2s ease;
   user-select: none;
+  touch-action: none;
+  transition: box-shadow 0.2s ease;
+}
+
+#aon-cards-trigger-btn:active {
+  cursor: grabbing;
 }
 
 #aon-cards-trigger-btn:hover {
-  transform: translateY(-2px) scale(1.05);
   box-shadow: 0 10px 30px rgba(168, 85, 247, 0.7);
 }
 
 #aon-cards-trigger-btn.hidden {
   display: none !important;
+}
+
+/* Внутренний блок кнопки */
+.aon-cards-trigger-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+/* Кнопки управления (свернуть / скрыть) */
+.aon-cards-trigger-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 2px;
+  padding-left: 6px;
+  border-left: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.aon-cards-trigger-btn-action {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: #fff;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s ease;
+}
+
+.aon-cards-trigger-btn-action:hover,
+.aon-cards-trigger-btn-action:active {
+  background: rgba(255, 255, 255, 0.45);
+}
+
+/* Свернутый режим — компактная круглая иконка */
+#aon-cards-trigger-btn.collapsed {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  justify-content: center;
+  align-items: center;
+}
+
+#aon-cards-trigger-btn.collapsed .aon-cards-trigger-label,
+#aon-cards-trigger-btn.collapsed .aon-cards-trigger-controls {
+  display: none !important;
+}
+
+#aon-cards-trigger-btn.collapsed .aon-cards-trigger-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#aon-cards-trigger-btn.collapsed .aon-cards-trigger-icon {
+  font-size: 20px;
+}
+
+#aon-cards-trigger-btn.collapsed .aon-cards-badge-pill {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 999px;
+  min-width: 16px;
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
 .aon-cards-badge-pill {
@@ -764,6 +851,17 @@
   font-weight: 800;
   padding: 1px 6px;
   border-radius: 999px;
+}
+
+/* Мобильная адаптация */
+@media (max-width: 640px) {
+  #aon-cards-widget {
+    width: calc(100vw - 16px);
+    max-width: 420px;
+    right: 8px;
+    bottom: 8px;
+    max-height: 82vh;
+  }
 }
 `;
   document.head.appendChild(styleEl);
@@ -1552,18 +1650,152 @@
     observer.observe(document.body, { childList: true, subtree: true });
   }
 
+  // --- Универсальное перетаскивание (Mouse + Touch) ---
+  function makeDraggable(el, handle = el, storageKey = null, onClickCallback = null) {
+    if (!el || !handle) return;
+    let isDragging = false;
+    let startX = 0, startY = 0;
+    let initLeft = 0, initTop = 0;
+    let hasMoved = false;
+
+    // Восстанавливаем сохраненную позицию
+    if (storageKey) {
+      try {
+        const saved = JSON.parse(localStorage.getItem(storageKey));
+        if (saved && typeof saved.left === 'number' && typeof saved.top === 'number') {
+          const maxL = Math.max(10, window.innerWidth - (el.offsetWidth || 140) - 10);
+          const maxT = Math.max(10, window.innerHeight - (el.offsetHeight || 44) - 10);
+          const left = Math.min(Math.max(8, saved.left), maxL);
+          const top = Math.min(Math.max(8, saved.top), maxT);
+          el.style.left = left + 'px';
+          el.style.top = top + 'px';
+          el.style.right = 'auto';
+          el.style.bottom = 'auto';
+        }
+      } catch (e) {}
+    }
+
+    function onPointerDown(e) {
+      // Игнорируем клики по кнопкам управления внутри плашки
+      if (e.target.closest('button, .aon-cards-trigger-btn-action, .aon-cards-btn-icon')) return;
+
+      const pointer = e.touches ? e.touches[0] : e;
+      startX = pointer.clientX;
+      startY = pointer.clientY;
+
+      const rect = el.getBoundingClientRect();
+      initLeft = rect.left;
+      initTop = rect.top;
+      hasMoved = false;
+      isDragging = true;
+
+      el.style.transition = 'none';
+
+      window.addEventListener('mousemove', onPointerMove, { passive: false });
+      window.addEventListener('mouseup', onPointerUp);
+      window.addEventListener('touchmove', onPointerMove, { passive: false });
+      window.addEventListener('touchend', onPointerUp);
+      window.addEventListener('touchcancel', onPointerUp);
+    }
+
+    function onPointerMove(e) {
+      if (!isDragging) return;
+      const pointer = e.touches ? e.touches[0] : e;
+      const dx = pointer.clientX - startX;
+      const dy = pointer.clientY - startY;
+
+      if (!hasMoved && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+        hasMoved = true;
+      }
+
+      if (hasMoved) {
+        if (e.cancelable) e.preventDefault(); // Предотвращаем скролл страницы на телефоне!
+
+        const w = el.offsetWidth || 140;
+        const h = el.offsetHeight || 44;
+        const maxLeft = Math.max(8, window.innerWidth - w - 8);
+        const maxTop = Math.max(8, window.innerHeight - h - 8);
+
+        const newLeft = Math.max(8, Math.min(maxLeft, initLeft + dx));
+        const newTop = Math.max(8, Math.min(maxTop, initTop + dy));
+
+        el.style.right = 'auto';
+        el.style.bottom = 'auto';
+        el.style.left = newLeft + 'px';
+        el.style.top = newTop + 'px';
+      }
+    }
+
+    function onPointerUp(e) {
+      if (!isDragging) return;
+      isDragging = false;
+      el.style.transition = '';
+
+      window.removeEventListener('mousemove', onPointerMove);
+      window.removeEventListener('mouseup', onPointerUp);
+      window.removeEventListener('touchmove', onPointerMove);
+      window.removeEventListener('touchend', onPointerUp);
+      window.removeEventListener('touchcancel', onPointerUp);
+
+      if (hasMoved) {
+        if (storageKey) {
+          try {
+            const rect = el.getBoundingClientRect();
+            localStorage.setItem(storageKey, JSON.stringify({ left: Math.round(rect.left), top: Math.round(rect.top) }));
+          } catch (err) {}
+        }
+      } else {
+        if (typeof onClickCallback === 'function') {
+          onClickCallback(e);
+        }
+      }
+    }
+
+    handle.addEventListener('mousedown', onPointerDown);
+    handle.addEventListener('touchstart', onPointerDown, { passive: true });
+  }
+
   // --- Инициализация и создание UI виджета ---
   function createCardsWidget() {
     if (document.getElementById('aon-cards-widget')) return;
 
-    // Плавающая кнопка вызова
+    // Плавающая кнопка вызова (перетаскиваемая, сворачиваемая, скрываемая)
     const triggerBtn = document.createElement('div');
     triggerBtn.id = 'aon-cards-trigger-btn';
     triggerBtn.innerHTML = `
-      <span>🎴 Быстрое открытие</span>
-      <span class="aon-cards-badge-pill" id="aon-cards-total-packs-pill">0 паков</span>
+      <div class="aon-cards-trigger-inner" id="aon-cards-trigger-inner">
+        <span class="aon-cards-trigger-icon">🎴</span>
+        <span class="aon-cards-trigger-label">Быстрое открытие</span>
+        <span class="aon-cards-badge-pill" id="aon-cards-total-packs-pill">0 паков</span>
+      </div>
+      <div class="aon-cards-trigger-controls">
+        <button id="aon-cards-trigger-min-btn" class="aon-cards-trigger-btn-action" title="Свернуть в мини-кнопку">−</button>
+        <button id="aon-cards-trigger-close-btn" class="aon-cards-trigger-btn-action" title="Скрыть кнопку">✕</button>
+      </div>
     `;
-    triggerBtn.onclick = () => {
+
+    try {
+      if (localStorage.getItem('aon_cards_trigger_collapsed') === 'true') {
+        triggerBtn.classList.add('collapsed');
+      }
+      if (sessionStorage.getItem('aon_cards_trigger_hidden') === 'true') {
+        triggerBtn.classList.add('hidden');
+      }
+    } catch (e) {}
+
+    function onTriggerClick(e) {
+      if (triggerBtn.classList.contains('collapsed')) {
+        // Если была свернута в кружок — разворачиваем
+        triggerBtn.classList.remove('collapsed');
+        try { localStorage.setItem('aon_cards_trigger_collapsed', 'false'); } catch (err) {}
+        const pill = document.getElementById('aon-cards-total-packs-pill');
+        if (pill) {
+          const packs = pill.getAttribute('data-packs') || '0';
+          pill.textContent = `${packs} паков`;
+        }
+        return;
+      }
+
       const w = document.getElementById('aon-cards-widget');
       if (w) {
         w.classList.toggle('hidden');
@@ -1571,7 +1803,9 @@
           refreshCardsData();
         }
       }
-    };
+    }
+
+    makeDraggable(triggerBtn, triggerBtn, 'aon_cards_trigger_pos', onTriggerClick);
     document.body.appendChild(triggerBtn);
 
     // Основное окно виджета
@@ -1759,37 +1993,37 @@
       };
     }
 
-    // Перетаскивание шапки виджета
+    // Кнопки сворачивания и скрытия плавающей плашки
+    const minTriggerBtn = document.getElementById('aon-cards-trigger-min-btn');
+    const closeTriggerBtn = document.getElementById('aon-cards-trigger-close-btn');
+
+    if (minTriggerBtn && triggerBtn) {
+      minTriggerBtn.onclick = (e) => {
+        e.stopPropagation();
+        triggerBtn.classList.toggle('collapsed');
+        const isCol = triggerBtn.classList.contains('collapsed');
+        try { localStorage.setItem('aon_cards_trigger_collapsed', isCol ? 'true' : 'false'); } catch (err) {}
+        const pill = document.getElementById('aon-cards-total-packs-pill');
+        if (pill) {
+          const packs = pill.getAttribute('data-packs') || '0';
+          pill.textContent = isCol ? packs : `${packs} паков`;
+        }
+      };
+    }
+
+    if (closeTriggerBtn && triggerBtn) {
+      closeTriggerBtn.onclick = (e) => {
+        e.stopPropagation();
+        triggerBtn.classList.add('hidden');
+        try { sessionStorage.setItem('aon_cards_trigger_hidden', 'true'); } catch (err) {}
+        showCardsToast('Кнопка скрыта. Вы можете снова открыть карты через меню тыкв!');
+      };
+    }
+
+    // Перетаскивание шапки виджета (поддержка Mouse и Touch на смартфонах)
     const dragHeader = document.getElementById('aon-cards-drag-header');
     if (dragHeader) {
-      let isDragging = false;
-      let startX, startY, initLeft, initTop;
-
-      dragHeader.onmousedown = (e) => {
-        if (e.target.closest('button')) return;
-        isDragging = true;
-        startX = e.clientX;
-        startY = e.clientY;
-        const rect = widget.getBoundingClientRect();
-        initLeft = rect.left;
-        initTop = rect.top;
-        widget.style.right = 'auto';
-        widget.style.bottom = 'auto';
-        widget.style.left = `${initLeft}px`;
-        widget.style.top = `${initTop}px`;
-      };
-
-      window.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-        const dx = e.clientX - startX;
-        const dy = e.clientY - startY;
-        widget.style.left = `${Math.max(10, Math.min(window.innerWidth - widget.offsetWidth - 10, initLeft + dx))}px`;
-        widget.style.top = `${Math.max(10, Math.min(window.innerHeight - widget.offsetHeight - 10, initTop + dy))}px`;
-      });
-
-      window.addEventListener('mouseup', () => {
-        isDragging = false;
-      });
+      makeDraggable(widget, dragHeader, 'aon_cards_widget_pos');
     }
   }
 
@@ -1835,7 +2069,12 @@
     if (valAnimon) valAnimon.textContent = bal.toLocaleString('ru-RU');
     if (valDust) valDust.textContent = dust.toLocaleString('ru-RU');
     if (valPacks) valPacks.textContent = totalPacks;
-    if (triggerPill) triggerPill.textContent = `${totalPacks} паков`;
+    if (triggerPill) {
+      triggerPill.setAttribute('data-packs', totalPacks);
+      const trig = document.getElementById('aon-cards-trigger-btn');
+      const isCol = trig && trig.classList.contains('collapsed');
+      triggerPill.textContent = isCol ? `${totalPacks}` : `${totalPacks} паков`;
+    }
   }
 
   function renderDailyStatus() {
@@ -2136,7 +2375,24 @@
     refresh: refreshCardsData,
     toggleWidget: () => {
       const w = document.getElementById('aon-cards-widget');
-      if (w) w.classList.toggle('hidden');
+      const trig = document.getElementById('aon-cards-trigger-btn');
+      if (trig) {
+        trig.classList.remove('hidden');
+        try { sessionStorage.removeItem('aon_cards_trigger_hidden'); } catch (e) {}
+      }
+      if (w) {
+        w.classList.toggle('hidden');
+        if (!w.classList.contains('hidden')) {
+          refreshCardsData();
+        }
+      }
+    },
+    showTrigger: () => {
+      const trig = document.getElementById('aon-cards-trigger-btn');
+      if (trig) {
+        trig.classList.remove('hidden');
+        try { sessionStorage.removeItem('aon_cards_trigger_hidden'); } catch (e) {}
+      }
     }
   };
 
@@ -2147,4 +2403,5 @@
     window.AnimeOnCards.init();
   }
 })();
+
 })();
