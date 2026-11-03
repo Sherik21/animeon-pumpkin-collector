@@ -3,7 +3,7 @@
 // @namespace    https://animeon.cc/
 // @version      1.3.0
 // @description  Умный непрерывный сбор тыкв и быстрое автооткрытие карточек на AnimeOn.
-// @author       Antigravity
+// @author       Sherik21
 // @match        https://animeon.cc/*
 // @grant        GM_setValue
 // @grant        GM_getValue
