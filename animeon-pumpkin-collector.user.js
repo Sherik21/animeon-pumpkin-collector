@@ -82,19 +82,20 @@
     #aon-pk-widget-root {
       position: fixed; bottom: 24px; right: 24px; z-index: 999999;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      color: #f4f4f5; user-select: none; font-size: 13px; line-height: 1.4;
+      color: #f4f4f5; user-select: none; font-size: 13px; line-height: 1.4; touch-action: none;
     }
     .aon-pk-badge-btn {
-      display: flex; align-items: center; gap: 8px;
-      background: rgba(18, 18, 26, 0.94); border: 1px solid rgba(249, 115, 22, 0.45);
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 16px rgba(249, 115, 22, 0.2);
+      display: flex; align-items: center; gap: 8px; background: rgba(18, 18, 26, 0.94);
+      border: 1px solid rgba(249, 115, 22, 0.55);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 16px rgba(249, 115, 22, 0.25);
       backdrop-filter: blur(12px); padding: 8px 14px; border-radius: 9999px;
-      cursor: pointer; transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); color: #fff;
+      cursor: grab; touch-action: none; transition: transform 0.15s ease, box-shadow 0.15s ease; color: #fff;
     }
     .aon-pk-badge-btn:hover {
       transform: translateY(-2px) scale(1.04); border-color: rgba(249, 115, 22, 0.85);
       box-shadow: 0 10px 36px rgba(0, 0, 0, 0.7), 0 0 24px rgba(249, 115, 22, 0.4);
     }
+    .aon-pk-badge-btn:active { cursor: grabbing; transform: scale(0.96); }
     .aon-pk-badge-icon { font-size: 18px; line-height: 1; }
     .aon-pk-badge-text { font-weight: 700; font-size: 13px; }
     .aon-pk-badge-count {
@@ -102,27 +103,40 @@
       border-radius: 12px; font-size: 11px;
     }
     .aon-pk-card {
-      width: 340px; background: rgba(18, 18, 26, 0.96); border: 1px solid rgba(249, 115, 22, 0.4);
+      width: 340px; max-width: calc(100vw - 20px); max-height: calc(100vh - 40px);
+      background: rgba(18, 18, 26, 0.96); border: 1px solid rgba(249, 115, 22, 0.4);
       box-shadow: 0 16px 48px rgba(0, 0, 0, 0.8), 0 0 28px rgba(249, 115, 22, 0.15);
-      backdrop-filter: blur(16px); border-radius: 16px; overflow: hidden;
+      backdrop-filter: blur(16px); border-radius: 16px; overflow-y: auto; overflow-x: hidden;
       display: flex; flex-direction: column; animation: aon-pk-pop 0.25s cubic-bezier(0.34, 1.35, 0.64, 1) both;
+      -webkit-overflow-scrolling: touch;
     }
     @keyframes aon-pk-pop {
       from { opacity: 0; transform: translateY(12px) scale(0.95); }
       to { opacity: 1; transform: translateY(0) scale(1); }
     }
     .aon-pk-header {
-      padding: 12px 14px; background: linear-gradient(135deg, rgba(249, 115, 22, 0.15), rgba(168, 85, 247, 0.1));
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08); display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; z-index: 20; padding: 10px 14px;
+      background: linear-gradient(135deg, rgba(28, 22, 20, 0.98), rgba(24, 18, 30, 0.98));
+      backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex; align-items: center; justify-content: space-between;
+      cursor: grab; touch-action: none; border-top-left-radius: 16px; border-top-right-radius: 16px;
     }
-    .aon-pk-title-wrap { display: flex; align-items: center; gap: 8px; }
+    .aon-pk-header:active { cursor: grabbing; }
+    .aon-pk-title-wrap { display: flex; align-items: center; gap: 8px; pointer-events: none; }
     .aon-pk-title { font-size: 13px; font-weight: 800; color: #ffedd5; }
     .aon-pk-pulse { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e; }
     .aon-pk-pulse.scanning { background: #f97316; box-shadow: 0 0 10px #f97316; animation: aon-pk-blink 1s infinite alternate; }
     .aon-pk-pulse.sleeping { background: #a855f7; box-shadow: 0 0 8px #a855f7; animation: none; }
     @keyframes aon-pk-blink { from { opacity: 0.4; } to { opacity: 1; } }
-    .aon-pk-close-btn { background: none; border: none; color: #a1a1aa; cursor: pointer; padding: 4px; font-size: 16px; }
-    .aon-pk-close-btn:hover { color: #fff; }
+    .aon-pk-close-btn {
+      background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.14);
+      color: #e4e4e7; cursor: pointer; width: 34px; height: 34px; min-width: 34px; min-height: 34px;
+      display: flex; align-items: center; justify-content: center; font-size: 18px; line-height: 1;
+      border-radius: 8px; transition: all 0.15s ease; touch-action: manipulation; margin-left: 8px; flex-shrink: 0;
+    }
+    .aon-pk-close-btn:hover, .aon-pk-close-btn:active {
+      background: rgba(239, 68, 68, 0.35); border-color: rgba(239, 68, 68, 0.5); color: #fff; transform: scale(1.06);
+    }
     .aon-pk-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px 14px 6px; }
     .aon-pk-stat-box { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 10px; padding: 8px 10px; text-align: center; }
     .aon-pk-stat-val { font-size: 17px; font-weight: 800; color: #f97316; }
@@ -1427,8 +1441,164 @@
 
     const b = document.getElementById('aon-pk-badge');
     const c = document.getElementById('aon-pk-card');
-    b.onclick = () => { b.style.display = 'none'; c.style.display = 'flex'; syncWithServer(); renderLocations(); };
-    document.getElementById('aon-pk-close').onclick = () => { c.style.display = 'none'; b.style.display = 'flex'; };
+    const closeBtn = document.getElementById('aon-pk-close');
+    const headerEl = c.querySelector('.aon-pk-header');
+
+    let isExpanded = false;
+
+    // Универсальное перетаскивание (мышь + тач на мобильных устройствах)
+    function setupWidgetDraggable(rootEl, cardHeaderEl, badgeEl, storageKey = 'aon_pumpkin_hud_pos') {
+      let isDragging = false;
+      let startX = 0;
+      let startY = 0;
+      let initLeft = 0;
+      let initTop = 0;
+      let hasMoved = false;
+
+      function clampPosition(left, top) {
+        const w = rootEl.offsetWidth || 140;
+        const h = rootEl.offsetHeight || 44;
+        const maxLeft = Math.max(4, window.innerWidth - w - 4);
+        const maxTop = Math.max(4, window.innerHeight - h - 4);
+        return {
+          left: Math.max(4, Math.min(maxLeft, left)),
+          top: Math.max(4, Math.min(maxTop, top))
+        };
+      }
+
+      try {
+        const saved = localStorage.getItem(storageKey);
+        if (saved) {
+          const pos = JSON.parse(saved);
+          if (typeof pos.left === 'number' && typeof pos.top === 'number') {
+            const clamped = clampPosition(pos.left, pos.top);
+            rootEl.style.right = 'auto';
+            rootEl.style.bottom = 'auto';
+            rootEl.style.left = clamped.left + 'px';
+            rootEl.style.top = clamped.top + 'px';
+          }
+        }
+      } catch (e) {}
+
+      function onPointerDown(e) {
+        if (e.target.closest('#aon-pk-close') || e.target.closest('button')) return;
+
+        const pointer = e.touches ? e.touches[0] : e;
+        startX = pointer.clientX;
+        startY = pointer.clientY;
+
+        const rect = rootEl.getBoundingClientRect();
+        initLeft = rect.left;
+        initTop = rect.top;
+        hasMoved = false;
+        isDragging = true;
+
+        rootEl.style.transition = 'none';
+
+        window.addEventListener('mousemove', onPointerMove, { passive: false });
+        window.addEventListener('mouseup', onPointerUp);
+        window.addEventListener('touchmove', onPointerMove, { passive: false });
+        window.addEventListener('touchend', onPointerUp);
+        window.addEventListener('touchcancel', onPointerUp);
+      }
+
+      function onPointerMove(e) {
+        if (!isDragging) return;
+        const pointer = e.touches ? e.touches[0] : e;
+        const dx = pointer.clientX - startX;
+        const dy = pointer.clientY - startY;
+
+        if (!hasMoved && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
+          hasMoved = true;
+        }
+
+        if (hasMoved) {
+          if (e.cancelable) e.preventDefault();
+          const clamped = clampPosition(initLeft + dx, initTop + dy);
+          rootEl.style.right = 'auto';
+          rootEl.style.bottom = 'auto';
+          rootEl.style.left = clamped.left + 'px';
+          rootEl.style.top = clamped.top + 'px';
+        }
+      }
+
+      function onPointerUp() {
+        if (!isDragging) return;
+        isDragging = false;
+        rootEl.style.transition = '';
+
+        window.removeEventListener('mousemove', onPointerMove);
+        window.removeEventListener('mouseup', onPointerUp);
+        window.removeEventListener('touchmove', onPointerMove);
+        window.removeEventListener('touchend', onPointerUp);
+        window.removeEventListener('touchcancel', onPointerUp);
+
+        if (hasMoved) {
+          try {
+            const rect = rootEl.getBoundingClientRect();
+            localStorage.setItem(storageKey, JSON.stringify({ left: Math.round(rect.left), top: Math.round(rect.top) }));
+          } catch (err) {}
+        }
+      }
+
+      if (cardHeaderEl) {
+        cardHeaderEl.addEventListener('mousedown', onPointerDown);
+        cardHeaderEl.addEventListener('touchstart', onPointerDown, { passive: true });
+      }
+
+      if (badgeEl) {
+        badgeEl.addEventListener('mousedown', onPointerDown);
+        badgeEl.addEventListener('touchstart', onPointerDown, { passive: true });
+      }
+
+      return {
+        hasMoved: () => hasMoved,
+        clamp: () => {
+          const rect = rootEl.getBoundingClientRect();
+          const clamped = clampPosition(rect.left, rect.top);
+          rootEl.style.right = 'auto';
+          rootEl.style.bottom = 'auto';
+          rootEl.style.left = clamped.left + 'px';
+          rootEl.style.top = clamped.top + 'px';
+        }
+      };
+    }
+
+    const dragHelper = setupWidgetDraggable(root, headerEl, b, 'aon_pumpkin_hud_pos');
+
+    function openCard() {
+      b.style.display = 'none';
+      c.style.display = 'flex';
+      isExpanded = true;
+      dragHelper.clamp();
+      syncWithServer();
+      renderLocations();
+    }
+
+    function closeCard() {
+      c.style.display = 'none';
+      b.style.display = 'flex';
+      isExpanded = false;
+      dragHelper.clamp();
+    }
+
+    b.onclick = () => {
+      if (dragHelper.hasMoved()) return;
+      openCard();
+    };
+
+    closeBtn.onclick = (e) => {
+      e.stopPropagation();
+      closeCard();
+    };
+
+    // Закрытие карточки при клике/тапе вне её области (удобно на смартфонах)
+    document.addEventListener('pointerdown', (e) => {
+      if (!isExpanded) return;
+      if (!c.contains(e.target) && !b.contains(e.target)) {
+        closeCard();
+      }
+    });
 
     document.getElementById('aon-pk-btn-quick').onclick = () => runHunter('quick', false);
     document.getElementById('aon-pk-btn-deep').onclick = () => runHunter('deep', false);

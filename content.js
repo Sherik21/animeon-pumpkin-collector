@@ -823,20 +823,164 @@
     const badge = document.getElementById('aon-pk-badge');
     const card = document.getElementById('aon-pk-card');
     const minBtn = document.getElementById('aon-pk-minimize-btn');
+    const headerEl = card.querySelector('.aon-pk-header');
 
-    badge.onclick = () => {
+    // Функция перетаскивания виджета (мышь + тач на мобильных устройствах)
+    function setupWidgetDraggable(rootEl, cardHeaderEl, badgeEl, storageKey = 'aon_pumpkin_hud_pos') {
+      let isDragging = false;
+      let startX = 0;
+      let startY = 0;
+      let initLeft = 0;
+      let initTop = 0;
+      let hasMoved = false;
+
+      function clampPosition(left, top) {
+        const w = rootEl.offsetWidth || 140;
+        const h = rootEl.offsetHeight || 44;
+        const maxLeft = Math.max(4, window.innerWidth - w - 4);
+        const maxTop = Math.max(4, window.innerHeight - h - 4);
+        return {
+          left: Math.max(4, Math.min(maxLeft, left)),
+          top: Math.max(4, Math.min(maxTop, top))
+        };
+      }
+
+      try {
+        const saved = localStorage.getItem(storageKey);
+        if (saved) {
+          const pos = JSON.parse(saved);
+          if (typeof pos.left === 'number' && typeof pos.top === 'number') {
+            const clamped = clampPosition(pos.left, pos.top);
+            rootEl.style.right = 'auto';
+            rootEl.style.bottom = 'auto';
+            rootEl.style.left = clamped.left + 'px';
+            rootEl.style.top = clamped.top + 'px';
+          }
+        }
+      } catch (e) {}
+
+      function onPointerDown(e) {
+        if (e.target.closest('#aon-pk-minimize-btn') || e.target.closest('button')) {
+          return;
+        }
+
+        const pointer = e.touches ? e.touches[0] : e;
+        startX = pointer.clientX;
+        startY = pointer.clientY;
+
+        const rect = rootEl.getBoundingClientRect();
+        initLeft = rect.left;
+        initTop = rect.top;
+        hasMoved = false;
+        isDragging = true;
+
+        rootEl.style.transition = 'none';
+
+        window.addEventListener('mousemove', onPointerMove, { passive: false });
+        window.addEventListener('mouseup', onPointerUp);
+        window.addEventListener('touchmove', onPointerMove, { passive: false });
+        window.addEventListener('touchend', onPointerUp);
+        window.addEventListener('touchcancel', onPointerUp);
+      }
+
+      function onPointerMove(e) {
+        if (!isDragging) return;
+        const pointer = e.touches ? e.touches[0] : e;
+        const dx = pointer.clientX - startX;
+        const dy = pointer.clientY - startY;
+
+        if (!hasMoved && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
+          hasMoved = true;
+        }
+
+        if (hasMoved) {
+          if (e.cancelable) e.preventDefault();
+
+          const clamped = clampPosition(initLeft + dx, initTop + dy);
+          rootEl.style.right = 'auto';
+          rootEl.style.bottom = 'auto';
+          rootEl.style.left = clamped.left + 'px';
+          rootEl.style.top = clamped.top + 'px';
+        }
+      }
+
+      function onPointerUp() {
+        if (!isDragging) return;
+        isDragging = false;
+        rootEl.style.transition = '';
+
+        window.removeEventListener('mousemove', onPointerMove);
+        window.removeEventListener('mouseup', onPointerUp);
+        window.removeEventListener('touchmove', onPointerMove);
+        window.removeEventListener('touchend', onPointerUp);
+        window.removeEventListener('touchcancel', onPointerUp);
+
+        if (hasMoved) {
+          try {
+            const rect = rootEl.getBoundingClientRect();
+            localStorage.setItem(storageKey, JSON.stringify({ left: Math.round(rect.left), top: Math.round(rect.top) }));
+          } catch (err) {}
+        }
+      }
+
+      if (cardHeaderEl) {
+        cardHeaderEl.addEventListener('mousedown', onPointerDown);
+        cardHeaderEl.addEventListener('touchstart', onPointerDown, { passive: true });
+      }
+
+      if (badgeEl) {
+        badgeEl.addEventListener('mousedown', onPointerDown);
+        badgeEl.addEventListener('touchstart', onPointerDown, { passive: true });
+      }
+
+      return {
+        hasMoved: () => hasMoved,
+        clamp: () => {
+          const rect = rootEl.getBoundingClientRect();
+          const clamped = clampPosition(rect.left, rect.top);
+          rootEl.style.right = 'auto';
+          rootEl.style.bottom = 'auto';
+          rootEl.style.left = clamped.left + 'px';
+          rootEl.style.top = clamped.top + 'px';
+        }
+      };
+    }
+
+    const dragHelper = setupWidgetDraggable(root, headerEl, badge, 'aon_pumpkin_hud_pos');
+
+    function openCard() {
       badge.style.display = 'none';
       card.style.display = 'flex';
       hudExpanded = true;
+      dragHelper.clamp();
       syncWithServer();
       renderCurrentHourLocations();
-    };
+    }
 
-    minBtn.onclick = () => {
+    function closeCard() {
       card.style.display = 'none';
       badge.style.display = 'flex';
       hudExpanded = false;
+      dragHelper.clamp();
+    }
+
+    badge.onclick = () => {
+      if (dragHelper.hasMoved()) return;
+      openCard();
     };
+
+    minBtn.onclick = (e) => {
+      e.stopPropagation();
+      closeCard();
+    };
+
+    // Закрытие карточки при клике/тапе вне её области (удобно на смартфонах)
+    document.addEventListener('pointerdown', (e) => {
+      if (!hudExpanded) return;
+      if (!card.contains(e.target) && !badge.contains(e.target)) {
+        closeCard();
+      }
+    });
 
     document.getElementById('aon-pk-quick-btn').onclick = () => runPumpkinHunter('quick', false);
     document.getElementById('aon-pk-deep-btn').onclick = () => runPumpkinHunter('deep', false);
