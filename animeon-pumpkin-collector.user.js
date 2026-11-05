@@ -985,25 +985,109 @@
     } catch {}
   }
 
+  function decodePumpkinFx(fx) {
+    if (typeof fx !== 'string' || !fx) return null;
+    try {
+      const b64 = fx.replace(/-/g, '+').replace(/_/g, '/');
+      const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
+      const bin = atob(pad);
+      if (bin.length < 5) return null;
+      const raw = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) raw[i] = bin.charCodeAt(i);
+
+      let a = ((raw[0] << 24) | (raw[1] << 16) | (raw[2] << 8) | raw[3]) ^ 0x5a17c3e9;
+      if ((a >>>= 0) === 0) a = 1;
+
+      let str = '';
+      for (let i = 4; i < raw.length; i++) {
+        a ^= (a << 13) >>> 0; a >>>= 0;
+        a ^= a >>> 17;
+        a ^= (a << 5) >>> 0; a >>>= 0;
+        const n = raw[i] ^ (a & 0xFF);
+        if (n === 0) break;
+        str += String.fromCharCode(n);
+      }
+
+      if (!str || str[0] !== '1') return null;
+      const parts = str.split('|');
+      if (parts.length !== 7) return null;
+      const parseNum = (v, d = 0) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : d;
+      };
+      return {
+        id: parts[1],
+        x_pct: parseNum(parts[2], 50),
+        y_pct: parseNum(parts[3], 50),
+        variant: Math.abs(Math.trunc(parseNum(parts[4], 0))) % 4,
+        claimed: parts[5] === '1',
+        expires_at: parseNum(parts[6], 0)
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
   function initDomWatcher() {
-    const observer = new MutationObserver(() => {
+    let debounceTimer = null;
+
+    async function checkCurrentPageForPumpkin() {
       if (!state.autoCollect) return;
-      const pumpkinBtn = document.querySelector('.pk-btn');
-      if (pumpkinBtn && !pumpkinBtn.dataset.aonCollected) {
-        pumpkinBtn.dataset.aonCollected = 'processing';
-        setTimeout(() => {
-          if (!pumpkinBtn.isConnected) return;
-          pumpkinBtn.click();
-          pumpkinBtn.dataset.aonCollected = 'done';
+
+      const pumpkinTarget = document.querySelector('.pk-btn') ||
+                            document.querySelector('.pk-root button') ||
+                            document.querySelector('.pk-art')?.closest('button') ||
+                            document.querySelector('img[src*="/event/pumpkins/pumpkin-"]')?.closest('button') ||
+                            document.querySelector('.pk-btn, .pk-art, img[src*="/event/pumpkins/pumpkin-"]');
+
+      if (pumpkinTarget && !pumpkinTarget.dataset.aonCollected) {
+        pumpkinTarget.dataset.aonCollected = 'processing';
+
+        setTimeout(async () => {
+          if (!pumpkinTarget.isConnected) return;
+          try {
+            const rect = pumpkinTarget.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const eventOpts = { bubbles: true, cancelable: true, clientX: cx, clientY: cy, view: window };
+            pumpkinTarget.dispatchEvent(new PointerEvent('pointerdown', eventOpts));
+            pumpkinTarget.dispatchEvent(new MouseEvent('mousedown', eventOpts));
+            pumpkinTarget.dispatchEvent(new PointerEvent('pointerup', eventOpts));
+            pumpkinTarget.dispatchEvent(new MouseEvent('mouseup', eventOpts));
+            pumpkinTarget.click();
+          } catch (e) {
+            pumpkinTarget.click();
+          }
+
+          pumpkinTarget.dataset.aonCollected = 'done';
           const p = window.location.pathname || '/';
           playSound();
           showToast('Тыква поймана на странице!', '+1');
           registerPumpkin(p, 'page-' + Date.now(), 1);
+
+          try {
+            const curResp = await fetch(`/api/event/pumpkins/state?path=${encodeURIComponent(p)}`, { credentials: 'include' });
+            if (curResp.ok) {
+              const curData = await curResp.json();
+              if (!curData.pumpkin && curData.fx) curData.pumpkin = decodePumpkinFx(curData.fx);
+              if (curData.pumpkin && !curData.pumpkin.claimed) {
+                await claimViaApi(p, curData.pumpkin.id, curData.claim_min_ms);
+              }
+            }
+          } catch (err) {}
+
           setTimeout(refreshBalance, 1200);
-        }, 500);
+        }, 300);
       }
+    }
+
+    const observer = new MutationObserver(() => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(checkCurrentPageForPumpkin, 200);
     });
+
     observer.observe(document.documentElement, { childList: true, subtree: true });
+    setTimeout(checkCurrentPageForPumpkin, 500);
   }
 
   async function claimViaApi(path, pId, minMs = 600) {
@@ -1092,6 +1176,7 @@
         const r = await fetch(`/api/event/pumpkins/state?path=${encodeURIComponent(p)}`, { credentials: 'include' });
         if (r.ok) {
           const j = await r.json();
+          if (!j.pumpkin && j.fx) j.pumpkin = decodePumpkinFx(j.fx);
           if (typeof j.daily_cap === 'number') state.dailyCap = j.daily_cap;
           if (typeof j.caught_today === 'number') state.caughtToday = j.caught_today;
 

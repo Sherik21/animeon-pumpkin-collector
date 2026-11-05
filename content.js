@@ -150,21 +150,43 @@
     }, 3800);
   }
 
-  // --- 1. АВТОСБОР НА СТРАНИЦЕ (DOM кликер) ---
+  // --- 1. АВТОСБОР НА СТРАНИЦЕ (DOM кликер + API страховка) ---
   function initDomWatcher() {
-    const observer = new MutationObserver(() => {
+    let debounceTimer = null;
+
+    async function checkCurrentPageForPumpkin() {
       if (!settings.autoCollectOnPage) return;
 
-      const pumpkinBtn = document.querySelector('.pk-btn');
-      if (pumpkinBtn && !pumpkinBtn.dataset.aonCollected) {
-        pumpkinBtn.dataset.aonCollected = 'processing';
+      // 1. Поиск тыквы в DOM (по кнопке, оверлею или самой картинке pk-art)
+      const pumpkinTarget = document.querySelector('.pk-btn') ||
+                            document.querySelector('.pk-root button') ||
+                            document.querySelector('.pk-art')?.closest('button') ||
+                            document.querySelector('img[src*="/event/pumpkins/pumpkin-"]')?.closest('button') ||
+                            document.querySelector('.pk-btn, .pk-art, img[src*="/event/pumpkins/pumpkin-"]');
 
-        setTimeout(() => {
-          if (!pumpkinBtn.isConnected) return;
-          console.log('[Pumpkin Hunter] Клик по тыкве на открытой странице!');
+      if (pumpkinTarget && !pumpkinTarget.dataset.aonCollected) {
+        pumpkinTarget.dataset.aonCollected = 'processing';
 
-          pumpkinBtn.click();
-          pumpkinBtn.dataset.aonCollected = 'done';
+        setTimeout(async () => {
+          if (!pumpkinTarget.isConnected) return;
+          console.log('[Pumpkin Hunter] Обнаружена тыква в DOM, выполняем сбор!');
+
+          // Эмуляция полного цикла событий мыши и клика
+          try {
+            const rect = pumpkinTarget.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const eventOpts = { bubbles: true, cancelable: true, clientX: cx, clientY: cy, view: window };
+            pumpkinTarget.dispatchEvent(new PointerEvent('pointerdown', eventOpts));
+            pumpkinTarget.dispatchEvent(new MouseEvent('mousedown', eventOpts));
+            pumpkinTarget.dispatchEvent(new PointerEvent('pointerup', eventOpts));
+            pumpkinTarget.dispatchEvent(new MouseEvent('mouseup', eventOpts));
+            pumpkinTarget.click();
+          } catch (e) {
+            pumpkinTarget.click();
+          }
+
+          pumpkinTarget.dataset.aonCollected = 'done';
 
           const currentPath = window.location.pathname || '/';
           const title = getCleanTitle(currentPath);
@@ -179,12 +201,26 @@
             amount: 1
           });
 
+          // Страховочный API запрос для гарантии сбора в базе данных
+          try {
+            const curState = await checkPumpkinOnPath(currentPath);
+            if (curState && curState.pumpkin && !curState.pumpkin.claimed) {
+              await claimPumpkinViaApi(currentPath, curState.pumpkin.id, curState.claim_min_ms);
+            }
+          } catch (err) {}
+
           setTimeout(refreshBalanceFromApi, 1200);
-        }, 500);
+        }, 300);
       }
+    }
+
+    const observer = new MutationObserver(() => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(checkCurrentPageForPumpkin, 200);
     });
 
     observer.observe(document.documentElement, { childList: true, subtree: true });
+    setTimeout(checkCurrentPageForPumpkin, 500);
   }
 
   // --- 2. РЕГИСТРАЦИЯ ЛОКАЦИИ ТЫКВЫ ЭТОГО ЧАСА ---
@@ -277,6 +313,49 @@
     }
   }
 
+  function decodePumpkinFx(fx) {
+    if (typeof fx !== 'string' || !fx) return null;
+    try {
+      const b64 = fx.replace(/-/g, '+').replace(/_/g, '/');
+      const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
+      const bin = atob(pad);
+      if (bin.length < 5) return null;
+      const raw = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) raw[i] = bin.charCodeAt(i);
+
+      let a = ((raw[0] << 24) | (raw[1] << 16) | (raw[2] << 8) | raw[3]) ^ 0x5a17c3e9;
+      if ((a >>>= 0) === 0) a = 1;
+
+      let str = '';
+      for (let i = 4; i < raw.length; i++) {
+        a ^= (a << 13) >>> 0; a >>>= 0;
+        a ^= a >>> 17;
+        a ^= (a << 5) >>> 0; a >>>= 0;
+        const n = raw[i] ^ (a & 0xFF);
+        if (n === 0) break;
+        str += String.fromCharCode(n);
+      }
+
+      if (!str || str[0] !== '1') return null;
+      const parts = str.split('|');
+      if (parts.length !== 7) return null;
+      const parseNum = (v, d = 0) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : d;
+      };
+      return {
+        id: parts[1],
+        x_pct: parseNum(parts[2], 50),
+        y_pct: parseNum(parts[3], 50),
+        variant: Math.abs(Math.trunc(parseNum(parts[4], 0))) % 4,
+        claimed: parts[5] === '1',
+        expires_at: parseNum(parts[6], 0)
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
   async function checkPumpkinOnPath(path) {
     try {
       const resp = await fetch(`/api/event/pumpkins/state?path=${encodeURIComponent(path)}`, {
@@ -285,6 +364,11 @@
       });
       if (!resp.ok) return null;
       const data = await resp.json();
+
+      // Расшифровываем тыкву из fx, если поле pumpkin равно null (anti-bot защита AnimeOn)
+      if (!data.pumpkin && data.fx) {
+        data.pumpkin = decodePumpkinFx(data.fx);
+      }
 
       if (typeof chrome !== 'undefined' && chrome.runtime) {
         chrome.runtime.sendMessage({
