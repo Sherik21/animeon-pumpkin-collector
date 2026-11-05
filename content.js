@@ -150,67 +150,69 @@
     }, 3800);
   }
 
-  // --- 1. АВТОСБОР НА СТРАНИЦЕ (DOM кликер + API страховка) ---
+  // --- 1. АВТОСБОР НА СТРАНИЦЕ (ТОЛЬКО НАСТОЯЩИЕ ТЫКВЫ ИВЕНТА .pk-root) ---
+  const EXCLUDED_PAGE_PREFIXES = ['/event/pumpkins', '/tv', '/settings', '/premium', '/login', '/register', '/api/', '/media/'];
+
   function initDomWatcher() {
     let debounceTimer = null;
 
     async function checkCurrentPageForPumpkin() {
       if (!settings.autoCollectOnPage) return;
 
-      // 1. Поиск тыквы в DOM (по кнопке, оверлею или самой картинке pk-art)
-      const pumpkinTarget = document.querySelector('.pk-btn') ||
-                            document.querySelector('.pk-root button') ||
-                            document.querySelector('.pk-art')?.closest('button') ||
-                            document.querySelector('img[src*="/event/pumpkins/pumpkin-"]')?.closest('button') ||
-                            document.querySelector('.pk-btn, .pk-art, img[src*="/event/pumpkins/pumpkin-"]');
+      const currentPath = window.location.pathname || '/';
+      // Исключаем страницы, на которых тыквы не спавнятся (там только статические баннеры/стикеры/магазин)
+      if (EXCLUDED_PAGE_PREFIXES.some(p => currentPath === p || currentPath.startsWith(p + '/'))) {
+        return;
+      }
 
-      if (pumpkinTarget && !pumpkinTarget.dataset.aonCollected) {
-        pumpkinTarget.dataset.aonCollected = 'processing';
+      // Настоящая тыква ивента рендерится ИСКЛЮЧИТЕЛЬНО внутри .pk-root (компонент PumpkinOverlay)
+      const rootEl = document.querySelector('.pk-root');
+      if (!rootEl) return;
 
-        setTimeout(async () => {
-          if (!pumpkinTarget.isConnected) return;
-          console.log('[Pumpkin Hunter] Обнаружена тыква в DOM, выполняем сбор!');
+      const pumpkinBtn = rootEl.querySelector('button.pk-btn') || rootEl.querySelector('button');
+      if (!pumpkinBtn || pumpkinBtn.dataset.aonCollected) return;
 
-          // Эмуляция полного цикла событий мыши и клика
-          try {
-            const rect = pumpkinTarget.getBoundingClientRect();
-            const cx = rect.left + rect.width / 2;
-            const cy = rect.top + rect.height / 2;
-            const eventOpts = { bubbles: true, cancelable: true, clientX: cx, clientY: cy, view: window };
-            pumpkinTarget.dispatchEvent(new PointerEvent('pointerdown', eventOpts));
-            pumpkinTarget.dispatchEvent(new MouseEvent('mousedown', eventOpts));
-            pumpkinTarget.dispatchEvent(new PointerEvent('pointerup', eventOpts));
-            pumpkinTarget.dispatchEvent(new MouseEvent('mouseup', eventOpts));
-            pumpkinTarget.click();
-          } catch (e) {
-            pumpkinTarget.click();
+      pumpkinBtn.dataset.aonCollected = 'processing';
+      console.log('[Pumpkin Hunter] Обнаружена настоящая тыква ивента (.pk-root), собираем!');
+
+      // 1. Пытаемся собрать через прямой API
+      let claimed = false;
+      try {
+        const curState = await checkPumpkinOnPath(currentPath);
+        if (curState && curState.pumpkin && !curState.pumpkin.claimed) {
+          const claimRes = await claimPumpkinViaApi(currentPath, curState.pumpkin.id, curState.claim_min_ms);
+          if (claimRes.success) {
+            claimed = true;
+            pumpkinBtn.dataset.aonCollected = 'done';
+            const title = getCleanTitle(currentPath);
+            playCollectSound();
+            showToast(`Собрана тыква на: ${title}!`, `+${claimRes.amount}`);
+            addHudLog(`✅ Собрано на ${title}!`, 'success');
+            await syncWithServer();
+            return;
           }
+        }
+      } catch (e) {}
 
-          pumpkinTarget.dataset.aonCollected = 'done';
+      // 2. Если API не ответил, выполняем точный клик с координатами
+      if (!claimed && pumpkinBtn.isConnected) {
+        try {
+          const rect = pumpkinBtn.getBoundingClientRect();
+          const cx = rect.left + rect.width / 2;
+          const cy = rect.top + rect.height / 2;
+          const eventOpts = { bubbles: true, cancelable: true, clientX: cx, clientY: cy, view: window };
+          pumpkinBtn.dispatchEvent(new PointerEvent('pointerdown', eventOpts));
+          pumpkinBtn.dispatchEvent(new MouseEvent('mousedown', eventOpts));
+          pumpkinBtn.dispatchEvent(new PointerEvent('pointerup', eventOpts));
+          pumpkinBtn.dispatchEvent(new MouseEvent('mouseup', eventOpts));
+          pumpkinBtn.click();
+        } catch (e) {
+          pumpkinBtn.click();
+        }
+        pumpkinBtn.dataset.aonCollected = 'done';
 
-          const currentPath = window.location.pathname || '/';
-          const title = getCleanTitle(currentPath);
-
-          playCollectSound();
-          showToast(`Тыква поймана на странице!`, `+1`);
-
-          registerCollectedPumpkin({
-            pumpkin_id: 'page-' + Date.now(),
-            path: currentPath,
-            title: title,
-            amount: 1
-          });
-
-          // Страховочный API запрос для гарантии сбора в базе данных
-          try {
-            const curState = await checkPumpkinOnPath(currentPath);
-            if (curState && curState.pumpkin && !curState.pumpkin.claimed) {
-              await claimPumpkinViaApi(currentPath, curState.pumpkin.id, curState.claim_min_ms);
-            }
-          } catch (err) {}
-
-          setTimeout(refreshBalanceFromApi, 1200);
-        }, 300);
+        // Синхронизируем статистику с сервером через 1.5 секунды после клика
+        setTimeout(syncWithServer, 1500);
       }
     }
 
@@ -220,7 +222,7 @@
     });
 
     observer.observe(document.documentElement, { childList: true, subtree: true });
-    setTimeout(checkCurrentPageForPumpkin, 500);
+    setTimeout(checkCurrentPageForPumpkin, 600);
   }
 
   // --- 2. РЕГИСТРАЦИЯ ЛОКАЦИИ ТЫКВЫ ЭТОГО ЧАСА ---
@@ -262,20 +264,55 @@
     updateHudStats();
   }
 
-  async function refreshBalanceFromApi() {
+  // --- ПОЛНАЯ СИНХРОНИЗАЦИЯ С СЕРВЕРОМ (Официальные данные с https://animeon.cc/event/pumpkins) ---
+  async function syncWithServer() {
     try {
-      const resp = await fetch('/api/event/pumpkins/shop', { credentials: 'include' });
-      if (resp.ok) {
-        const data = await resp.json();
-        if (typeof data.balance === 'number') {
-          settings.stats.balance = data.balance;
-          if (typeof chrome !== 'undefined' && chrome.storage) {
-            chrome.storage.local.set({ stats: settings.stats });
-            chrome.runtime.sendMessage({ action: 'UPDATE_BALANCE', balance: data.balance }).catch(() => {});
-          }
-          updateHudStats();
+      // 1. Основное состояние: сколько собрано сегодня, лимит дня, лимит часа
+      const stateResp = await fetch('/api/event/pumpkins/state?path=/', { credentials: 'include' });
+      if (stateResp.ok) {
+        const stateData = await stateResp.json();
+        if (typeof stateData.caught_today === 'number') settings.stats.caughtToday = stateData.caught_today;
+        if (typeof stateData.daily_cap === 'number') settings.stats.dailyCap = stateData.daily_cap;
+        if (typeof stateData.caught_hour === 'number') settings.stats.caughtThisHour = stateData.caught_hour;
+        if (typeof stateData.hourly_cap === 'number') settings.stats.hourlyCap = stateData.hourly_cap;
+      }
+
+      // 2. Реальный баланс тыкв в магазине
+      const shopResp = await fetch('/api/event/pumpkins/shop', { credentials: 'include' });
+      if (shopResp.ok) {
+        const shopData = await shopResp.json();
+        if (typeof shopData.balance === 'number') {
+          settings.stats.balance = shopData.balance;
         }
       }
+
+      // 3. Реальная история собранных тыкв пользователя
+      const histResp = await fetch('/api/event/pumpkins/history', { credentials: 'include' });
+      if (histResp.ok) {
+        const histData = await histResp.json();
+        if (Array.isArray(histData.catches)) {
+          const currentHourStart = new Date().setMinutes(0, 0, 0);
+          const currentHourCatches = histData.catches.filter(c => {
+            const t = typeof c.created_at === 'string' ? Date.parse(c.created_at) : (c.created_at * 1000 || c.at || 0);
+            return t >= currentHourStart;
+          });
+          settings.currentHourPumpkins = currentHourCatches.map(c => ({
+            id: c.id || String(c.at),
+            path: c.path || '/',
+            url: 'https://animeon.cc' + (c.path || '/'),
+            title: getCleanTitle(c.path || '/'),
+            amount: c.amount || 1,
+            foundAt: typeof c.created_at === 'string' ? Date.parse(c.created_at) : (c.created_at * 1000 || c.at || Date.now())
+          }));
+        }
+      }
+
+      if (typeof chrome !== 'undefined' && chrome.storage) {
+        chrome.storage.local.set({ stats: settings.stats, currentHourPumpkins: settings.currentHourPumpkins });
+      }
+
+      renderCurrentHourLocations();
+      updateHudStats();
     } catch (e) {}
   }
 
@@ -791,7 +828,7 @@
       badge.style.display = 'none';
       card.style.display = 'flex';
       hudExpanded = true;
-      refreshBalanceFromApi();
+      syncWithServer();
       renderCurrentHourLocations();
     };
 
@@ -988,7 +1025,8 @@
   // Запуск
   initDomWatcher();
   createHudWidget();
-  refreshBalanceFromApi();
+  syncWithServer();
+  setInterval(syncWithServer, 60000);
 
   console.log('[AnimeOn Pumpkin Hunter] Непрерывный умный автосборщик запущен');
 })();

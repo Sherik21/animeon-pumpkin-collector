@@ -964,25 +964,62 @@
       saveOpt('currentHourPumpkins', state.currentHourPumpkins);
     }
 
-    state.caughtToday = (state.caughtToday || 0) + amount;
-    saveOpt('caughtToday', state.caughtToday);
+    // caughtToday обновляется только с сервера в syncWithServer()
 
     renderLocations();
     updateHud();
   }
 
-  async function refreshBalance() {
+    const EXCLUDED_PAGE_PREFIXES = ['/event/pumpkins', '/tv', '/settings', '/premium', '/login', '/register', '/api/', '/media/'];
+
+  async function syncWithServer() {
     try {
-      const resp = await fetch('/api/event/pumpkins/shop', { credentials: 'include' });
-      if (resp.ok) {
-        const data = await resp.json();
-        if (typeof data.balance === 'number') {
-          state.balance = data.balance;
+      // 1. Проверяем реальное состояние лимитов (как на https://animeon.cc/event/pumpkins)
+      const stateResp = await fetch('/api/event/pumpkins/state?path=/', { credentials: 'include' });
+      if (stateResp.ok) {
+        const stateData = await stateResp.json();
+        if (typeof stateData.caught_today === 'number') state.caughtToday = stateData.caught_today;
+        if (typeof stateData.daily_cap === 'number') state.dailyCap = stateData.daily_cap;
+        if (typeof stateData.caught_hour === 'number') state.caughtThisHour = stateData.caught_hour;
+        if (typeof stateData.hourly_cap === 'number') state.hourlyCap = stateData.hourly_cap;
+        saveOpt('caughtToday', state.caughtToday);
+      }
+
+      // 2. Реальный баланс тыкв из магазина
+      const shopResp = await fetch('/api/event/pumpkins/shop', { credentials: 'include' });
+      if (shopResp.ok) {
+        const shopData = await shopResp.json();
+        if (typeof shopData.balance === 'number') {
+          state.balance = shopData.balance;
           saveOpt('balance', state.balance);
-          updateHud();
         }
       }
-    } catch {}
+
+      // 3. Реальная история сбора с сервера
+      const histResp = await fetch('/api/event/pumpkins/history', { credentials: 'include' });
+      if (histResp.ok) {
+        const histData = await histResp.json();
+        if (Array.isArray(histData.catches)) {
+          const currentHourStart = new Date().setMinutes(0, 0, 0);
+          const currentHourCatches = histData.catches.filter(c => {
+            const t = typeof c.created_at === 'string' ? Date.parse(c.created_at) : (c.created_at * 1000 || c.at || 0);
+            return t >= currentHourStart;
+          });
+          state.currentHourPumpkins = currentHourCatches.map(c => ({
+            id: c.id || String(c.at),
+            path: c.path || '/',
+            url: 'https://animeon.cc' + (c.path || '/'),
+            title: getCleanTitle(c.path || '/'),
+            amount: c.amount || 1,
+            foundAt: typeof c.created_at === 'string' ? Date.parse(c.created_at) : (c.created_at * 1000 || c.at || Date.now())
+          }));
+          saveOpt('currentHourPumpkins', state.currentHourPumpkins);
+        }
+      }
+
+      renderLocations();
+      updateHud();
+    } catch (e) {}
   }
 
   function decodePumpkinFx(fx) {
@@ -1028,56 +1065,66 @@
     }
   }
 
-  function initDomWatcher() {
+    function initDomWatcher() {
     let debounceTimer = null;
 
     async function checkCurrentPageForPumpkin() {
       if (!state.autoCollect) return;
 
-      const pumpkinTarget = document.querySelector('.pk-btn') ||
-                            document.querySelector('.pk-root button') ||
-                            document.querySelector('.pk-art')?.closest('button') ||
-                            document.querySelector('img[src*="/event/pumpkins/pumpkin-"]')?.closest('button') ||
-                            document.querySelector('.pk-btn, .pk-art, img[src*="/event/pumpkins/pumpkin-"]');
+      const currentPath = window.location.pathname || '/';
+      // Исключаем страницы без спавна тыкв (там только статические иконки/баннеры)
+      if (EXCLUDED_PAGE_PREFIXES.some(p => currentPath === p || currentPath.startsWith(p + '/'))) {
+        return;
+      }
 
-      if (pumpkinTarget && !pumpkinTarget.dataset.aonCollected) {
-        pumpkinTarget.dataset.aonCollected = 'processing';
+      // Настоящая тыква события спавнится ИСКЛЮЧИТЕЛЬНО внутри .pk-root (компонент PumpkinOverlay)
+      const rootEl = document.querySelector('.pk-root');
+      if (!rootEl) return;
 
-        setTimeout(async () => {
-          if (!pumpkinTarget.isConnected) return;
-          try {
-            const rect = pumpkinTarget.getBoundingClientRect();
-            const cx = rect.left + rect.width / 2;
-            const cy = rect.top + rect.height / 2;
-            const eventOpts = { bubbles: true, cancelable: true, clientX: cx, clientY: cy, view: window };
-            pumpkinTarget.dispatchEvent(new PointerEvent('pointerdown', eventOpts));
-            pumpkinTarget.dispatchEvent(new MouseEvent('mousedown', eventOpts));
-            pumpkinTarget.dispatchEvent(new PointerEvent('pointerup', eventOpts));
-            pumpkinTarget.dispatchEvent(new MouseEvent('mouseup', eventOpts));
-            pumpkinTarget.click();
-          } catch (e) {
-            pumpkinTarget.click();
-          }
+      const pumpkinBtn = rootEl.querySelector('button.pk-btn') || rootEl.querySelector('button');
+      if (!pumpkinBtn || pumpkinBtn.dataset.aonCollected) return;
 
-          pumpkinTarget.dataset.aonCollected = 'done';
-          const p = window.location.pathname || '/';
-          playSound();
-          showToast('Тыква поймана на странице!', '+1');
-          registerPumpkin(p, 'page-' + Date.now(), 1);
+      pumpkinBtn.dataset.aonCollected = 'processing';
+      console.log('[Pumpkin Hunter] Обнаружена настоящая тыква ивента (.pk-root), собираем!');
 
-          try {
-            const curResp = await fetch(`/api/event/pumpkins/state?path=${encodeURIComponent(p)}`, { credentials: 'include' });
-            if (curResp.ok) {
-              const curData = await curResp.json();
-              if (!curData.pumpkin && curData.fx) curData.pumpkin = decodePumpkinFx(curData.fx);
-              if (curData.pumpkin && !curData.pumpkin.claimed) {
-                await claimViaApi(p, curData.pumpkin.id, curData.claim_min_ms);
-              }
+      let claimed = false;
+      try {
+        const curResp = await fetch(`/api/event/pumpkins/state?path=${encodeURIComponent(currentPath)}`, { credentials: 'include' });
+        if (curResp.ok) {
+          const curData = await curResp.json();
+          if (!curData.pumpkin && curData.fx) curData.pumpkin = decodePumpkinFx(curData.fx);
+          if (curData.pumpkin && !curData.pumpkin.claimed) {
+            const claimRes = await claimViaApi(currentPath, curData.pumpkin.id, curData.claim_min_ms);
+            if (!claimRes.error) {
+              claimed = true;
+              pumpkinBtn.dataset.aonCollected = 'done';
+              const title = getCleanTitle(currentPath);
+              playSound();
+              showToast(`Собрана тыква на: ${title}!`, `+${claimRes.amount || 1}`);
+              addLog(`✅ Собрано на ${title}!`, 'success');
+              await syncWithServer();
+              return;
             }
-          } catch (err) {}
+          }
+        }
+      } catch (err) {}
 
-          setTimeout(refreshBalance, 1200);
-        }, 300);
+      if (!claimed && pumpkinBtn.isConnected) {
+        try {
+          const rect = pumpkinBtn.getBoundingClientRect();
+          const cx = rect.left + rect.width / 2;
+          const cy = rect.top + rect.height / 2;
+          const eventOpts = { bubbles: true, cancelable: true, clientX: cx, clientY: cy, view: window };
+          pumpkinBtn.dispatchEvent(new PointerEvent('pointerdown', eventOpts));
+          pumpkinBtn.dispatchEvent(new MouseEvent('mousedown', eventOpts));
+          pumpkinBtn.dispatchEvent(new PointerEvent('pointerup', eventOpts));
+          pumpkinBtn.dispatchEvent(new MouseEvent('mouseup', eventOpts));
+          pumpkinBtn.click();
+        } catch (e) {
+          pumpkinBtn.click();
+        }
+        pumpkinBtn.dataset.aonCollected = 'done';
+        setTimeout(syncWithServer, 1500);
       }
     }
 
@@ -1087,7 +1134,7 @@
     });
 
     observer.observe(document.documentElement, { childList: true, subtree: true });
-    setTimeout(checkCurrentPageForPumpkin, 500);
+    setTimeout(checkCurrentPageForPumpkin, 600);
   }
 
   async function claimViaApi(path, pId, minMs = 600) {
@@ -1380,7 +1427,7 @@
 
     const b = document.getElementById('aon-pk-badge');
     const c = document.getElementById('aon-pk-card');
-    b.onclick = () => { b.style.display = 'none'; c.style.display = 'flex'; refreshBalance(); renderLocations(); };
+    b.onclick = () => { b.style.display = 'none'; c.style.display = 'flex'; syncWithServer(); renderLocations(); };
     document.getElementById('aon-pk-close').onclick = () => { c.style.display = 'none'; b.style.display = 'flex'; };
 
     document.getElementById('aon-pk-btn-quick').onclick = () => runHunter('quick', false);
@@ -1502,7 +1549,7 @@
   // Запуск
   initDomWatcher();
   createWidget();
-  refreshBalance();
+  syncWithServer();
 
   setTimeout(() => {
     if (state.alwaysCollect && !hourScanState.hourCompleted) runHunter('quick', true);
